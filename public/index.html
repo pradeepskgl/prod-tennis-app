@@ -222,34 +222,65 @@ function renderTournaments() {
 
 function renderLegacyTournaments() {
   const legacyEl = document.getElementById('legacyTournamentSection');
+  const hiddenTourns = tournaments.filter(t => t.hiddenFromUI);
+  const emptyTourns = tournaments.filter(t => !t.isLegacy && !t.hiddenFromUI && bracket.filter(m => m.tournamentId === t._id).length === 0);
   
-  if (!isAdmin || (tournaments.filter(t => t.hiddenFromUI).length === 0 && hiddenTournaments.length === 0)) {
+  if (!isAdmin || (hiddenTourns.length === 0 && emptyTourns.length === 0)) {
     legacyEl.style.display = 'none';
     return;
   }
   
-  const hiddenTourns = tournaments.filter(t => t.hiddenFromUI);
   legacyEl.style.display = 'block';
+  let content = '';
   
-  legacyEl.innerHTML = `
-    <div class="session-block" style="opacity: 0.8;">
-      <div class="session-title" style="cursor: pointer; user-select: none;" onclick="toggleHiddenTournaments()">
-        📦 Hidden Tournaments (<span id="hiddenCount">${hiddenTourns.length}</span>) - Click to expand
+  if (hiddenTourns.length > 0) {
+    content += `
+      <div class="session-block" style="opacity: 0.85;">
+        <div class="session-title" style="cursor: pointer; user-select: none;" onclick="toggleHiddenTournaments()">
+          📦 Hidden Tournaments (<span id="hiddenCount">${hiddenTourns.length}</span>) - Click to expand
+        </div>
+        <div id="hiddenTournamentList" style="display: none; margin-top: 12px;">
+          ${hiddenTourns.map(t => `
+            <div style="display:flex; gap:8px; align-items:center; padding:8px; background:#f5f5f5; border-radius:4px; margin-bottom:6px; color:#222;">
+              <span style="flex:1; color:#333;"><b>${t.name}</b> · ${t.dateRange} · ${t.status}</span>
+              <button style="padding:4px 8px; font-size:12px;" onclick="showTournament('${t._id}')">Restore</button>
+            </div>
+          `).join('')}
+        </div>
       </div>
-      <div id="hiddenTournamentList" style="display: none; margin-top: 12px;">
-        ${hiddenTourns.map(t => `
-          <div style="display:flex; gap:8px; align-items:center; padding:8px; background:#f5f5f5; border-radius:4px; margin-bottom:6px;">
-            <span style="flex:1;"><b>${t.name}</b> · ${t.dateRange} · ${t.status}</span>
-            <button style="padding:4px 8px; font-size:12px;" onclick="showTournament('${t._id}')">Restore</button>
-          </div>
-        `).join('')}
+    `;
+  }
+  
+  if (emptyTourns.length > 0) {
+    content += `
+      <div class="session-block" style="opacity: 0.85; border: 1px dashed #ccc;">
+        <div class="session-title" style="cursor: pointer; user-select: none;" onclick="toggleEmptyTournaments()">
+          ⚠️ Empty Tournaments (<span id="emptyCount">${emptyTourns.length}</span>) - Click to expand
+        </div>
+        <div id="emptyTournamentList" style="display: none; margin-top: 12px;">
+          ${emptyTourns.map(t => `
+            <div style="display:flex; gap:8px; align-items:center; padding:8px; background:#fff9e6; border-radius:4px; margin-bottom:6px; color:#222;">
+              <span style="flex:1; color:#555;"><b>${t.name}</b> · ${t.dateRange} · (Not seeded)</span>
+              <button style="padding:4px 8px; font-size:12px; background:#ff6b6b; color:white; border:none; border-radius:3px; cursor:pointer;" onclick="deleteTournament('${t._id}')">Delete</button>
+            </div>
+          `).join('')}
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
+  
+  legacyEl.innerHTML = content;
 }
 
 function toggleHiddenTournaments() {
   const list = document.getElementById('hiddenTournamentList');
+  if (list) {
+    list.style.display = list.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
+function toggleEmptyTournaments() {
+  const list = document.getElementById('emptyTournamentList');
   if (list) {
     list.style.display = list.style.display === 'none' ? 'block' : 'none';
   }
@@ -308,6 +339,16 @@ async function hideTournament(id) {
 async function showTournament(id) {
   await Api.post(`/api/bracket/tournaments/${id}/show`);
   await loadBracket();
+}
+
+async function deleteTournament(id) {
+  if (!confirm('Delete this empty tournament? This action cannot be undone.')) return;
+  try {
+    await Api.del(`/api/bracket/tournaments/${id}/delete`);
+    await loadBracket();
+  } catch (e) {
+    alert('Error deleting tournament: ' + e.message);
+  }
 }
 
 (async function init() {

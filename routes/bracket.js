@@ -127,4 +127,19 @@ router.post('/tournaments/:tournamentId/show', requireAuth, async (req, res) => 
   res.json({ ok: true, tournament });
 });
 
+router.delete('/tournaments/:tournamentId/delete', requireAuth, async (req, res) => {
+  const tournament = await Tournament.findById(req.params.tournamentId);
+  if (!tournament) return res.status(404).json({ error: 'Tournament not found.' });
+  
+  // Prevent deletion of legacy tournaments
+  if (tournament.isLegacy) return res.status(400).json({ error: 'Cannot delete legacy tournaments.' });
+  
+  // Check if tournament has any matches
+  const matchCount = await Match.countDocuments({ tournamentId: tournament._id });
+  if (matchCount > 0) return res.status(400).json({ error: 'Can only delete empty tournaments.' });
+  
+  await Tournament.findByIdAndDelete(req.params.tournamentId);
+  res.json({ ok: true, deleted: true });
+});
+
 module.exports = router;

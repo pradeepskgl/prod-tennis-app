@@ -1,5 +1,6 @@
 const express = require('express');
 const Match = require('../models/Match');
+const Tournament = require('../models/Tournament');
 const { requireAuth } = require('../middleware/auth');
 const rulesEngine = require('../utils/rulesEngine');
 
@@ -137,14 +138,14 @@ router.post('/:matchNumber/start', requireAuth, loadMatch, requireLockOwnership,
 
   match.score = rulesEngine.newMatchScore(server);
   match.status = 'in_progress';
+  match.startedAt = new Date();
+  match.completedAt = null;
   match.history = [];
   match.version += 1;
   await match.save();
   broadcast(req.app.get('io'), match);
   res.json({ ok: true, match });
 });
-
-// ---- Scoring: add a point ----
 
 router.post('/:matchNumber/point', requireAuth, loadMatch, requireLockOwnership, async (req, res) => {
   const match = req.match;
@@ -160,15 +161,17 @@ router.post('/:matchNumber/point', requireAuth, loadMatch, requireLockOwnership,
     return res.status(400).json({ error: 'Match is not in progress (record the coin toss and start the match first).' });
   }
 
-  // Push a snapshot for undo, capped at 50 entries
   match.history.push(JSON.parse(JSON.stringify(match.score)));
   if (match.history.length > 50) match.history.shift();
 
+  const tournament = await Tournament.findOne({ _id: match.tournamentId }).lean();
+  const thirdSetFormat = tournament && tournament.thirdSetFormat ? tournament.thirdSetFormat : 'match_tiebreak';
   const { score, events, switchSuggestion } = rulesEngine.addPoint(
     match.score.toObject ? match.score.toObject() : match.score,
     match.phase,
     scorer,
-    match.switchPacing
+    match.switchPacing,
+    thirdSetFormat
   );
 
   match.score = score;
@@ -233,6 +236,7 @@ router.post('/:matchNumber/finish', requireAuth, loadMatch, requireLockOwnership
   }
 
   match.status = 'completed';
+  match.completedAt = new Date();
   match.version += 1;
   await match.save();
   await propagateWinner(match);

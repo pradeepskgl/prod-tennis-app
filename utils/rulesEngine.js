@@ -76,8 +76,9 @@ function pointLabel(count, otherCount, noAd) {
  * @param {number} phase - 1 (Fast4) or 2 (Regular)
  * @param {string} scorer - 'player1' | 'player2'
  * @param {string} switchPacing - 'odd_game' | 'every_two_games' (Fast4 only; Regular always odd_game)
+ * @param {string} thirdSetFormat - 'match_tiebreak' | 'regular_set'
  */
-function addPoint(score, phase, scorer, switchPacing) {
+function addPoint(score, phase, scorer, switchPacing, thirdSetFormat = 'match_tiebreak') {
   const s = JSON.parse(JSON.stringify(score)); // deep clone, never mutate caller's object
   const events = [];
   let switchSuggestion = null;
@@ -148,10 +149,16 @@ function addPoint(score, phase, scorer, switchPacing) {
         s.winner = setsWonP1 === 2 ? 'player1' : 'player2';
         events.push(`${s.winner} wins the match!`);
       } else if (setsWonP1 === 1 && setsWonP2 === 1) {
-        // Sets are 1-1: go straight to a 10-point match tiebreak, no 3rd set.
-        s.inMatchTiebreak = true;
-        s.matchTiebreak = { p1: 0, p2: 0, firstServer: other(tb.firstServer), target: 10, suddenDeath: false };
-        events.push('Sets tied 1-1: playing a 10-point match tiebreak instead of a 3rd set.');
+        if (thirdSetFormat === 'regular_set') {
+          s.currentSetIndex += 1;
+          s.sets.push(freshSet());
+          s.game = freshGame(other(tb.firstServer));
+          events.push('Sets tied 1-1: playing a regular 3rd set.');
+        } else {
+          s.inMatchTiebreak = true;
+          s.matchTiebreak = { p1: 0, p2: 0, firstServer: other(tb.firstServer), target: 10, suddenDeath: false };
+          events.push('Sets tied 1-1: playing a 10-point match tiebreak instead of a 3rd set.');
+        }
       } else {
         // Only one set has been decided so far (e.g. 1-0) - start the next set.
         s.currentSetIndex += 1;
@@ -246,9 +253,16 @@ function addPoint(score, phase, scorer, switchPacing) {
       s.winner = setsWonP1 === 2 ? 'player1' : 'player2';
       events.push(`${s.winner} wins the match!`);
     } else if (setsWonP1 === 1 && setsWonP2 === 1) {
-      s.inMatchTiebreak = true;
-      s.matchTiebreak = { p1: 0, p2: 0, firstServer: s.game.server, target: 10, suddenDeath: false };
-      events.push('Sets tied 1-1: playing a 10-point match tiebreak instead of a 3rd set.');
+      if (thirdSetFormat === 'regular_set') {
+        s.currentSetIndex += 1;
+        s.sets.push(freshSet());
+        s.game = freshGame(other(s.game.server));
+        events.push('Sets tied 1-1: playing a regular 3rd set.');
+      } else {
+        s.inMatchTiebreak = true;
+        s.matchTiebreak = { p1: 0, p2: 0, firstServer: s.game.server, target: 10, suddenDeath: false };
+        events.push('Sets tied 1-1: playing a 10-point match tiebreak instead of a 3rd set.');
+      }
     } else {
       // Start next set
       s.currentSetIndex += 1;

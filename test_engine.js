@@ -1,10 +1,10 @@
 const { newMatchScore, addPoint } = require('./utils/rulesEngine');
 
-function play(phase, sequence, pacing = 'odd_game') {
+function play(phase, sequence, pacing = 'odd_game', thirdSetFormat = 'match_tiebreak') {
   let score = newMatchScore('player1');
   let log = [];
   for (const scorer of sequence) {
-    const r = addPoint(score, phase, scorer, pacing);
+    const r = addPoint(score, phase, scorer, pacing, thirdSetFormat);
     score = r.score;
     if (r.switchSuggestion) log.push('SWITCH: ' + r.switchSuggestion);
     log.push(...r.events);
@@ -113,6 +113,14 @@ check('Set 1 won via tiebreak (1-0) starts Set 2, no premature match tiebreak',
   r9.score.sets.length === 2 && r9.score.currentSetIndex === 1 &&
   r9.score.inMatchTiebreak === false && r9.score.winner === null &&
   r9.score.sets[0].wonBy === 'player1');
+
+// Test 10: third-set format can be configured to play a regular third set instead of a match tiebreak
+seq = [];
+for (let g = 0; g < 4; g++) seq.push(...winGame('player1'));
+for (let g = 0; g < 4; g++) seq.push(...winGame('player2'));
+let r10 = play(1, seq, 'odd_game', 'regular_set');
+check('Regular third set selected starts a full third set rather than a match tiebreak',
+  r10.score.inMatchTiebreak === false && r10.score.sets.length === 3 && r10.score.currentSetIndex === 2);
 
 console.log(failures === 0 ? '\nALL TESTS PASSED' : `\n${failures} TEST(S) FAILED`);
 process.exit(failures === 0 ? 0 : 1);

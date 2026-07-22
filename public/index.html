@@ -18,6 +18,8 @@
     <button class="secondary" onclick="renderDay(2)" id="dayBtn2">Day 2 - July 19</button>
   </div>
 
+  <div id="tournamentAdmin" style="display:none; margin-bottom: 16px;"></div>
+  <div id="tournamentList" style="margin-bottom: 16px;"></div>
   <div id="matchList"></div>
 </main>
 
@@ -27,6 +29,8 @@ let currentDay = 1;
 let isAdmin = false;
 let setupComplete = true;
 let bracket = [];
+let tournaments = [];
+let selectedTournamentId = null;
 
 function roundIsDay1(round) {
   return ['Play-In', 'Round of 16'].includes(round);
@@ -91,6 +95,7 @@ async function doLogin() {
     await Api.post('/api/auth/login', { passcode });
     isAdmin = true;
     renderAuthArea();
+    await loadBracket();
   } catch (e) {
     document.getElementById('loginError').textContent = e.message;
   }
@@ -100,33 +105,125 @@ async function doLogout() {
   await Api.post('/api/auth/logout');
   isAdmin = false;
   renderAuthArea();
+  await loadBracket();
 }
 
 async function loadBracket() {
   bracket = await Api.get('/api/bracket');
+  tournaments = await Api.get('/api/bracket/tournaments');
+  if (tournaments.length) {
+    selectedTournamentId = tournaments[0]._id;
+  }
+  renderTournaments();
   renderDay(currentDay);
+}
+
+function renderTournaments() {
+  const listEl = document.getElementById('tournamentList');
+  const adminEl = document.getElementById('tournamentAdmin');
+  if (!isAdmin) {
+    adminEl.style.display = 'none';
+  } else {
+    adminEl.style.display = 'block';
+    adminEl.innerHTML = `
+      <div class="session-block">
+        <div class="session-title">Create tournament</div>
+        <div class="field-row">
+          <label>Tournament name</label><input id="tourName" value="New Tournament">
+        </div>
+        <div class="field-row">
+          <label>Date range</label><input id="tourDate" value="Upcoming">
+        </div>
+        <div class="field-row">
+          <label>Match type</label>
+          <select id="tourMatchType">
+            <option value="fast4">Fast4</option>
+            <option value="regular">Regular sets</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>3rd set</label>
+          <select id="tourThirdSet">
+            <option value="match_tiebreak">10-point match tiebreak</option>
+            <option value="regular_set">Regular 3rd set</option>
+          </select>
+        </div>
+        <button onclick="createTournament()">Create new tournament</button>
+      </div>
+    `;
+  }
+
+  if (!tournaments.length) {
+    listEl.innerHTML = '<p class="small-note">No tournaments yet.</p>';
+    return;
+  }
+
+  const currentTournament = tournaments.find(t => t._id === selectedTournamentId) || tournaments[0];
+  selectedTournamentId = currentTournament._id;
+  const filteredMatches = bracket.filter(m => m.tournamentId === selectedTournamentId);
+  listEl.innerHTML = `
+    <div class="session-block">
+      <div class="session-title">Tournaments</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+        ${tournaments.map(t => `<button class="${t._id === selectedTournamentId ? '' : 'secondary'}" onclick="selectTournament('${t._id}')">${t.name}</button>`).join('')}
+      </div>
+      <div class="match-meta">Showing: <b>${currentTournament.name}</b> · ${currentTournament.matchType === 'fast4' ? 'Fast4' : 'Regular sets'} · 3rd set: ${currentTournament.thirdSetFormat === 'regular_set' ? 'Regular 3rd set' : '10-point match tiebreak'}</div>
+      ${isAdmin ? `<button onclick="seedTournament('${currentTournament._id}')">Seed tournament bracket</button>` : ''}
+      ${isAdmin && currentTournament.status !== 'completed' ? `<button class="secondary" onclick="completeTournament('${currentTournament._id}')">Mark as completed</button>` : ''}
+    </div>
+  `;
+
+  const matches = filteredMatches.filter(m => (currentDay === 1) === roundIsDay1(m.round));
+  const list = document.getElementById('matchList');
+  list.innerHTML = matches.map(m => {
+    const winnerName = m.status === 'completed' && m.score && m.score.winner ? m[m.score.winner].name : null;
+    const started = m.startedAt ? new Date(m.startedAt).toLocaleString() : 'Not started';
+    const completed = m.completedAt ? new Date(m.completedAt).toLocaleString() : 'In progress';
+    return `
+    <div class="match-card" onclick="location.href='/match.html?m=${m.matchNumber}'">
+      <div>
+        <div class="match-meta">Match ${m.matchNumber} - ${m.round} - ${m.session} - ${m.scheduledStart} to ${m.scheduledEnd}</div>
+        <div class="match-players">${m.player1.name} vs ${m.player2.name}</div>
+        <div class="match-meta">Started: ${started} · Ended: ${completed}</div>
+        ${winnerName ? `<div class="match-meta" style="color:#ffd479;">Winner: ${winnerName} 🏆</div>` : ''}
+      </div>
+      <span class="badge ${m.status}">${m.status.replace('_',' ')}</span>
+    </div>
+  `;
+  }).join('') || '<p class="small-note">No matches yet for this tournament.</p>';
 }
 
 function renderDay(day) {
   currentDay = day;
   document.getElementById('dayBtn1').className = day === 1 ? '' : 'secondary';
   document.getElementById('dayBtn2').className = day === 2 ? '' : 'secondary';
+  renderTournaments();
+}
 
-  const matches = bracket.filter(m => (day === 1) === roundIsDay1(m.round));
-  const list = document.getElementById('matchList');
-  list.innerHTML = matches.map(m => {
-    const winnerName = m.status === 'completed' && m.score && m.score.winner ? m[m.score.winner].name : null;
-    return `
-    <div class="match-card" onclick="location.href='/match.html?m=${m.matchNumber}'">
-      <div>
-        <div class="match-meta">Match ${m.matchNumber} - ${m.round} - ${m.session} - ${m.scheduledStart} to ${m.scheduledEnd}</div>
-        <div class="match-players">${m.player1.name} vs ${m.player2.name}</div>
-        ${winnerName ? `<div class="match-meta" style="color:#ffd479;">Winner: ${winnerName} 🏆</div>` : ''}
-      </div>
-      <span class="badge ${m.status}">${m.status.replace('_',' ')}</span>
-    </div>
-  `;
-  }).join('') || '<p class="small-note">No matches yet - run the seed script.</p>';
+async function createTournament() {
+  const name = document.getElementById('tourName').value;
+  const dateRange = document.getElementById('tourDate').value;
+  const matchType = document.getElementById('tourMatchType').value;
+  const thirdSetFormat = document.getElementById('tourThirdSet').value;
+  const created = await Api.post('/api/bracket/tournaments', { name, dateRange, matchType, thirdSetFormat });
+  tournaments.unshift(created.tournament);
+  selectedTournamentId = created.tournament._id;
+  renderTournaments();
+}
+
+async function selectTournament(id) {
+  selectedTournamentId = id;
+  renderTournaments();
+}
+
+async function seedTournament(id) {
+  await Api.post(`/api/bracket/tournaments/${id}/seed`);
+  await loadBracket();
+}
+
+async function completeTournament(id) {
+  await Api.post(`/api/bracket/tournaments/${id}/complete`);
+  await loadBracket();
 }
 
 (async function init() {

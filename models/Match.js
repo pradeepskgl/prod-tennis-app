@@ -42,9 +42,13 @@ const matchSchema = new mongoose.Schema({
   round: { type: String, required: true }, // "Play-In" | "Round of 16" | "Quarterfinal" | "Semifinal" | "Final"
   phase: { type: Number, enum: [1, 2], required: true }, // 1 = Fast4, 2 = Regular
   session: { type: String, default: '' }, // "Morning" | "Evening"
+  tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', default: null },
+  tournamentName: { type: String, default: '' },
 
   scheduledStart: { type: String, default: '' }, // editable, free text e.g. "06:30 AM"
   scheduledEnd: { type: String, default: '' },
+  startedAt: { type: Date, default: null },
+  completedAt: { type: Date, default: null },
 
   player1: {
     name: { type: String, default: 'TBD' },

@@ -81,13 +81,28 @@ window.addEventListener('beforeunload', () => {
 
 // ---- Schedule view/edit ----
 
+function formatElapsed(startedAt) {
+  if (!startedAt) return '';
+  const diffMs = Date.now() - new Date(startedAt).getTime();
+  const mins = Math.floor(diffMs / 60000);
+  const hrs = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return hrs > 0 ? `${hrs}h ${remMins}m` : `${mins}m`;
+}
+
 function renderSchedule() {
   const view = document.getElementById('scheduleView');
+  const timing = document.getElementById('timingView');
   view.innerHTML = `
     <div class="match-meta">${match.round} - ${match.session} - ${match.scheduledStart} to ${match.scheduledEnd}</div>
     <div class="match-players">${match.player1.name} vs ${match.player2.name}</div>
     <div class="small-note">Phase ${match.phase === 1 ? '1 (Fast4)' : '2 (Regular)'} · Switch pacing: ${match.switchPacing.replace('_', ' ')}</div>
     ${isAdmin ? '<button class="secondary" onclick="toggleScheduleEdit()">Edit</button>' : ''}
+  `;
+  timing.innerHTML = `
+    <div>Started: ${match.startedAt ? new Date(match.startedAt).toLocaleString() : 'Not started yet'}</div>
+    <div>Ended: ${match.completedAt ? new Date(match.completedAt).toLocaleString() : 'Still in progress'}</div>
+    ${match.startedAt && !match.completedAt ? `<div>Elapsed: ${formatElapsed(match.startedAt)}</div>` : ''}
   `;
 
   const edit = document.getElementById('scheduleEdit');
@@ -466,4 +481,7 @@ function render() {
   await loadMatch();
   connectSocket();
   await acquireLockIfAdmin();
+  setInterval(() => {
+    if (match && match.startedAt && !match.completedAt) renderSchedule();
+  }, 60000);
 })();

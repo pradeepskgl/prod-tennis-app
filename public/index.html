@@ -13,13 +13,14 @@
 </header>
 <main>
 
-  <div id="dayTabs" style="margin-bottom: 14px;">
+  <div id="dayTabs" style="margin-bottom: 14px; display: none;">
     <button onclick="renderDay(1)" id="dayBtn1">Day 1 - July 18</button>
     <button class="secondary" onclick="renderDay(2)" id="dayBtn2">Day 2 - July 19</button>
   </div>
 
   <div id="tournamentAdmin" style="display:none; margin-bottom: 16px;"></div>
   <div id="tournamentList" style="margin-bottom: 16px;"></div>
+  <div id="legacyTournamentSection" style="margin-bottom: 16px; display: none;"></div>
   <div id="matchList"></div>
 </main>
 
@@ -30,6 +31,7 @@ let isAdmin = false;
 let setupComplete = true;
 let bracket = [];
 let tournaments = [];
+let hiddenTournaments = [];
 let selectedTournamentId = null;
 
 function roundIsDay1(round) {
@@ -111,16 +113,35 @@ async function doLogout() {
 async function loadBracket() {
   bracket = await Api.get('/api/bracket');
   tournaments = await Api.get('/api/bracket/tournaments');
-  if (tournaments.length) {
+  if (isAdmin) {
+    try {
+      hiddenTournaments = await Api.get('/api/bracket/tournaments/hidden');
+    } catch (e) {
+      hiddenTournaments = [];
+    }
+  }
+  
+  // Filter out hidden tournaments
+  const visibleTournaments = tournaments.filter(t => !t.hiddenFromUI);
+  
+  if (visibleTournaments.length) {
+    selectedTournamentId = visibleTournaments[0]._id;
+  } else if (tournaments.length) {
     selectedTournamentId = tournaments[0]._id;
   }
+  
   renderTournaments();
+  renderLegacyTournaments();
   renderDay(currentDay);
 }
 
 function renderTournaments() {
   const listEl = document.getElementById('tournamentList');
   const adminEl = document.getElementById('tournamentAdmin');
+  
+  // Filter visible tournaments
+  const visibleTournaments = tournaments.filter(t => !t.hiddenFromUI);
+  
   if (!isAdmin) {
     adminEl.style.display = 'none';
   } else {
@@ -153,19 +174,25 @@ function renderTournaments() {
     `;
   }
 
-  if (!tournaments.length) {
-    listEl.innerHTML = '<p class="small-note">No tournaments yet.</p>';
+  if (!visibleTournaments.length) {
+    listEl.innerHTML = '<p class="small-note">No active tournaments. View legacy tournaments below.</p>';
     return;
   }
 
-  const currentTournament = tournaments.find(t => t._id === selectedTournamentId) || tournaments[0];
+  const currentTournament = visibleTournaments.find(t => t._id === selectedTournamentId) || visibleTournaments[0];
   selectedTournamentId = currentTournament._id;
   const filteredMatches = bracket.filter(m => m.tournamentId === selectedTournamentId);
+  
   listEl.innerHTML = `
     <div class="session-block">
       <div class="session-title">Tournaments</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
-        ${tournaments.map(t => `<button class="${t._id === selectedTournamentId ? '' : 'secondary'}" onclick="selectTournament('${t._id}')">${t.name}</button>`).join('')}
+        ${visibleTournaments.map(t => `
+          <div style="display:flex; gap:4px; align-items:center;">
+            <button class="${t._id === selectedTournamentId ? '' : 'secondary'}" onclick="selectTournament('${t._id}')">${t.name}</button>
+            ${isAdmin ? `<button style="padding:4px 6px; font-size:12px;" onclick="hideTournament('${t._id}')">Hide</button>` : ''}
+          </div>
+        `).join('')}
       </div>
       <div class="match-meta">Showing: <b>${currentTournament.name}</b> · ${currentTournament.matchType === 'fast4' ? 'Fast4' : 'Regular sets'} · 3rd set: ${currentTournament.thirdSetFormat === 'regular_set' ? 'Regular 3rd set' : '10-point match tiebreak'}</div>
       ${isAdmin ? `<button onclick="seedTournament('${currentTournament._id}')">Seed tournament bracket</button>` : ''}
@@ -193,10 +220,55 @@ function renderTournaments() {
   }).join('') || '<p class="small-note">No matches yet for this tournament.</p>';
 }
 
+function renderLegacyTournaments() {
+  const legacyEl = document.getElementById('legacyTournamentSection');
+  
+  if (!isAdmin || (tournaments.filter(t => t.hiddenFromUI).length === 0 && hiddenTournaments.length === 0)) {
+    legacyEl.style.display = 'none';
+    return;
+  }
+  
+  const hiddenTourns = tournaments.filter(t => t.hiddenFromUI);
+  legacyEl.style.display = 'block';
+  
+  legacyEl.innerHTML = `
+    <div class="session-block" style="opacity: 0.8;">
+      <div class="session-title" style="cursor: pointer; user-select: none;" onclick="toggleHiddenTournaments()">
+        📦 Hidden Tournaments (<span id="hiddenCount">${hiddenTourns.length}</span>) - Click to expand
+      </div>
+      <div id="hiddenTournamentList" style="display: none; margin-top: 12px;">
+        ${hiddenTourns.map(t => `
+          <div style="display:flex; gap:8px; align-items:center; padding:8px; background:#f5f5f5; border-radius:4px; margin-bottom:6px;">
+            <span style="flex:1;"><b>${t.name}</b> · ${t.dateRange} · ${t.status}</span>
+            <button style="padding:4px 8px; font-size:12px;" onclick="showTournament('${t._id}')">Restore</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function toggleHiddenTournaments() {
+  const list = document.getElementById('hiddenTournamentList');
+  if (list) {
+    list.style.display = list.style.display === 'none' ? 'block' : 'none';
+  }
+}
+
 function renderDay(day) {
   currentDay = day;
-  document.getElementById('dayBtn1').className = day === 1 ? '' : 'secondary';
-  document.getElementById('dayBtn2').className = day === 2 ? '' : 'secondary';
+  
+  // Only show day tabs if viewing a legacy tournament
+  const legacyTournament = tournaments.find(t => t.isLegacy && t._id === selectedTournamentId);
+  const dayTabs = document.getElementById('dayTabs');
+  if (legacyTournament) {
+    dayTabs.style.display = 'block';
+    document.getElementById('dayBtn1').className = day === 1 ? '' : 'secondary';
+    document.getElementById('dayBtn2').className = day === 2 ? '' : 'secondary';
+  } else {
+    dayTabs.style.display = 'none';
+  }
+  
   renderTournaments();
 }
 
@@ -214,6 +286,7 @@ async function createTournament() {
 async function selectTournament(id) {
   selectedTournamentId = id;
   renderTournaments();
+  renderDay(currentDay);
 }
 
 async function seedTournament(id) {
@@ -223,6 +296,17 @@ async function seedTournament(id) {
 
 async function completeTournament(id) {
   await Api.post(`/api/bracket/tournaments/${id}/complete`);
+  await loadBracket();
+}
+
+async function hideTournament(id) {
+  if (!confirm('Hide this tournament from the main view? (Data will be preserved)')) return;
+  await Api.post(`/api/bracket/tournaments/${id}/hide`);
+  await loadBracket();
+}
+
+async function showTournament(id) {
+  await Api.post(`/api/bracket/tournaments/${id}/show`);
   await loadBracket();
 }
 

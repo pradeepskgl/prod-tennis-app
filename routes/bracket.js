@@ -38,6 +38,11 @@ router.get('/tournaments', async (req, res) => {
   res.json(tournaments);
 });
 
+router.get('/tournaments/hidden', requireAuth, async (req, res) => {
+  const tournaments = await Tournament.find({ hiddenFromUI: true }).sort({ createdAt: -1 }).lean();
+  res.json(tournaments);
+});
+
 router.post('/tournaments', requireAuth, async (req, res) => {
   const { name, dateRange, matchType, thirdSetFormat } = req.body;
   const tournament = await Tournament.create({
@@ -104,6 +109,22 @@ router.post('/tournaments/:tournamentId/seed', requireAuth, async (req, res) => 
   }
 
   res.json({ ok: true, tournament, seeded: true });
+});
+
+router.post('/tournaments/:tournamentId/hide', requireAuth, async (req, res) => {
+  const tournament = await Tournament.findById(req.params.tournamentId);
+  if (!tournament) return res.status(404).json({ error: 'Tournament not found.' });
+  tournament.hiddenFromUI = true;
+  await tournament.save();
+  res.json({ ok: true, tournament });
+});
+
+router.post('/tournaments/:tournamentId/show', requireAuth, async (req, res) => {
+  const tournament = await Tournament.findById(req.params.tournamentId);
+  if (!tournament) return res.status(404).json({ error: 'Tournament not found.' });
+  tournament.hiddenFromUI = false;
+  await tournament.save();
+  res.json({ ok: true, tournament });
 });
 
 module.exports = router;

@@ -142,4 +142,20 @@ router.delete('/tournaments/:tournamentId/delete', requireAuth, async (req, res)
   res.json({ ok: true, deleted: true });
 });
 
+router.patch('/tournaments/:tournamentId/rename', requireAuth, async (req, res) => {
+  const { name } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ error: 'Tournament name is required.' });
+  
+  const tournament = await Tournament.findById(req.params.tournamentId);
+  if (!tournament) return res.status(404).json({ error: 'Tournament not found.' });
+  
+  tournament.name = name.trim();
+  await tournament.save();
+  
+  // Also update all associated matches if this is a seeded tournament
+  await Match.updateMany({ tournamentId: tournament._id }, { $set: { tournamentName: tournament.name } });
+  
+  res.json({ ok: true, tournament });
+});
+
 module.exports = router;

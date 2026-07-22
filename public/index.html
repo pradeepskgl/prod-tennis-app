@@ -13,13 +13,14 @@
 </header>
 <main>
 
+  <div id="tournamentAdmin" style="display:none; margin-bottom: 16px;"></div>
+  <div id="tournamentList" style="margin-bottom: 16px;"></div>
+
   <div id="dayTabs" style="margin-bottom: 14px; display: none;">
     <button onclick="renderDay(1)" id="dayBtn1">Day 1 - July 18</button>
     <button class="secondary" onclick="renderDay(2)" id="dayBtn2">Day 2 - July 19</button>
   </div>
 
-  <div id="tournamentAdmin" style="display:none; margin-bottom: 16px;"></div>
-  <div id="tournamentList" style="margin-bottom: 16px;"></div>
   <div id="legacyTournamentSection" style="margin-bottom: 16px; display: none;"></div>
   <div id="matchList"></div>
 </main>
@@ -190,7 +191,8 @@ function renderTournaments() {
         ${visibleTournaments.map(t => `
           <div style="display:flex; gap:4px; align-items:center;">
             <button class="${t._id === selectedTournamentId ? '' : 'secondary'}" onclick="selectTournament('${t._id}')">${t.name}</button>
-            ${isAdmin ? `<button style="padding:4px 6px; font-size:12px;" onclick="hideTournament('${t._id}')">Hide</button>` : ''}
+            ${isAdmin && t.isLegacy ? `<button style="padding:4px 6px; font-size:12px;" onclick="showRenameLegacyModal('${t._id}', '${t.name}')">✏️ Edit</button>` : ''}
+            ${isAdmin && !t.isLegacy ? `<button style="padding:4px 6px; font-size:12px;" onclick="hideTournament('${t._id}')">Hide</button>` : ''}
           </div>
         `).join('')}
       </div>
@@ -348,6 +350,22 @@ async function deleteTournament(id) {
     await loadBracket();
   } catch (e) {
     alert('Error deleting tournament: ' + e.message);
+  }
+}
+
+function showRenameLegacyModal(id, currentName) {
+  const newName = prompt('Rename legacy tournament:', currentName);
+  if (newName && newName.trim() && newName !== currentName) {
+    renameLegacyTournament(id, newName.trim());
+  }
+}
+
+async function renameLegacyTournament(id, newName) {
+  try {
+    await Api.patch(`/api/bracket/tournaments/${id}/rename`, { name: newName });
+    await loadBracket();
+  } catch (e) {
+    alert('Error renaming tournament: ' + e.message);
   }
 }
 
